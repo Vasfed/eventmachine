@@ -59,6 +59,8 @@ static VALUE Intern_connection_completed;
 
 static VALUE rb_cProcStatus;
 
+static int bCallbackTimingEnabled = 0;
+
 struct em_event {
 	unsigned long signature;
 	int event;
@@ -208,15 +210,30 @@ static void event_callback_wrapper_with_timing (const unsigned long signature, i
 	event_callback_wrapper(signature, event, data_str, data_num);
 	if (bTimeOk && clock_gettime(CLOCK_REALTIME, &ts_end) != -1){
 		fprintf(stderr, "EM callback(%d@%d) handled in %gms.\n", event, signature, (ts_end.tv_sec - ts.tv_sec)*1000 + (ts_end.tv_nsec - ts.tv_nsec)/1000000.0);
+	} else {
+		fprintf(stderr, "EM callback cannot be timed.\n");
 	}
 #else
 	struct timeval tv, tv_end;
 	if(gettimeofday(&tv, 0) >= 0) bTimeOk = true;
 	event_callback_wrapper(signature, event, data_str, data_num);
-	if(gettimeofday(&tv_end, 0) >= 0){
+	if(bTimeOk && gettimeofday(&tv_end, 0) >= 0){
 		fprintf(stderr, "EM callback(%d@%d) handled in %gms\n", event, signature, (tv_end.tv_sec - tv.tv_sec)*1000 + (tv_end.tv_usec - tv.tv_usec)/1000.0);
+	} else {
+		fprintf(stderr, "EM callback cannot be timed\n");
 	}
 #endif
+}
+
+static VALUE t_callback_timing_set (VALUE self, VALUE val)
+{
+	bCallbackTimingEnabled = RTEST(val);
+	return val;
+}
+
+static VALUE t_callback_timing_get (VALUE self)
+{
+	return bCallbackTimingEnabled ? Qtrue : Qfalse;
 }
 
 /**************************
@@ -229,7 +246,7 @@ static VALUE t_initialize_event_machine (VALUE self)
 	EmTimersHash = rb_ivar_get (EmModule, Intern_at_timers);
 	assert(EmConnsHash != Qnil);
 	assert(EmTimersHash != Qnil);
-	if(true){
+	if(bCallbackTimingEnabled){
 		evma_initialize_library ((EMCallback)event_callback_wrapper_with_timing);
 	} else {
 		evma_initialize_library ((EMCallback)event_callback_wrapper);
@@ -1300,6 +1317,9 @@ extern "C" void Init_rubyeventmachine()
 	rb_define_module_function (EmModule, "kqueue", (VALUE(*)(...))t__kqueue, 0);
 	rb_define_module_function (EmModule, "kqueue=", (VALUE(*)(...))t__kqueue_set, 1);
 	rb_define_module_function (EmModule, "kqueue?", (VALUE(*)(...))t__kqueue_p, 0);
+
+	rb_define_module_function (EmModule, "callback_timing", (VALUE(*)(...))t_callback_timing_get, 0);
+	rb_define_module_function (EmModule, "callback_timing=", (VALUE(*)(...))t_callback_timing_set, 1);
 
 	rb_define_module_function (EmModule, "ssl?", (VALUE(*)(...))t__ssl_p, 0);
 
