@@ -20,6 +20,7 @@ See the file COPYING for complete licensing information.
 #include "project.h"
 #include "eventmachine.h"
 #include <ruby.h>
+#include <time.h>
 
 #ifndef RFLOAT_VALUE
 #define RFLOAT_VALUE(arg) RFLOAT(arg)->value
@@ -198,6 +199,26 @@ static void event_callback_wrapper (const unsigned long signature, int event, co
 		rb_rescue((VALUE (*)(ANYARGS))event_callback, (VALUE)&e, (VALUE (*)(ANYARGS))event_error_handler, Qnil);
 }
 
+static void event_callback_wrapper_with_timing (const unsigned long signature, int event, const char *data_str, const unsigned long data_num)
+{
+	int bTimeOk = false;
+#ifdef HAVE_CLOCK_GETTIME
+	struct timespec ts, ts_end;
+	if (clock_gettime(CLOCK_REALTIME, &ts) != -1) bTimeOk = true;
+	event_callback_wrapper(signature, event, data_str, data_num);
+	if (bTimeOk && clock_gettime(CLOCK_REALTIME, &ts_end) != -1){
+		fprintf(stderr, "EM callback(%d@%d) handled in %gms.\n", event, signature, (ts_end.tv_sec - ts.tv_sec)*1000 + (ts_end.tv_nsec - ts.tv_nsec)/1000000.0);
+	}
+#else
+	struct timeval tv, tv_end;
+	if(gettimeofday(&tv, 0) >= 0) bTimeOk = true;
+	event_callback_wrapper(signature, event, data_str, data_num);
+	if(gettimeofday(&tv_end, 0) >= 0){
+		fprintf(stderr, "EM callback(%d@%d) handled in %gms\n", event, signature, (tv_end.tv_sec - tv.tv_sec)*1000 + (tv_end.tv_usec - tv.tv_usec)/1000.0);
+	}
+#endif
+}
+
 /**************************
 t_initialize_event_machine
 **************************/
@@ -208,7 +229,11 @@ static VALUE t_initialize_event_machine (VALUE self)
 	EmTimersHash = rb_ivar_get (EmModule, Intern_at_timers);
 	assert(EmConnsHash != Qnil);
 	assert(EmTimersHash != Qnil);
-	evma_initialize_library ((EMCallback)event_callback_wrapper);
+	if(true){
+		evma_initialize_library ((EMCallback)event_callback_wrapper_with_timing);
+	} else {
+		evma_initialize_library ((EMCallback)event_callback_wrapper);
+	}
 	return Qnil;
 }
 

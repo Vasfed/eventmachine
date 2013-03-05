@@ -164,6 +164,7 @@ else
   CONFIG['LDSHARED'] = "$(CXX) -shared"
 end
 
+have_func('clock_gettime', 'time.h')
 
 # solaris c++ compiler doesn't have make_pair()
 TRY_LINK.sub!('$(CC)', '$(CXX)')
