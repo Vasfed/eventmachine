@@ -65,6 +65,11 @@ extern "C" void evma_initialize_library (EMCallback cb)
 		EventMachine->_UseKqueue();
 }
 
+extern "C" void* evma_get_machine_ptr()
+{
+	ensure_eventmachine("evma_get_machine_ptr");
+	return EventMachine;
+}
 
 /********************
 evma_release_library

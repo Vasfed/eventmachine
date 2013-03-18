@@ -167,6 +167,8 @@ class EventMachine_t
 		void _ReadInotifyEvents();
         int NumCloseScheduled;
 
+    void _ResetStatistics();
+
 	private:
 		enum {
 			MaxEpollDescriptors = 64*1024,
@@ -202,6 +204,18 @@ class EventMachine_t
 		unsigned TickCountTickover;
 		unsigned LastTickCount;
 		#endif
+
+    void StatsMeasureTimerLatency(double timer_time);
+  public:
+    struct{
+      int enabled;
+      unsigned PollsTotalCount, PollsTimedOut;
+      unsigned TimersFired;
+      double TimersDelayAcc;
+      double TimersMaxDelay;
+      double TimersMinDelay;
+      timeval last_reset;
+    } Stats;
 
 	private:
 		bool bTerminateSignalReceived;

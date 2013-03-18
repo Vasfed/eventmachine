@@ -21,6 +21,7 @@ See the file COPYING for complete licensing information.
 //#ifdef OS_UNIX
 
 #include "project.h"
+#include <float.h>
 
 /* The numer of max outstanding timers was once a const enum defined in em.h.
  * Now we define it here so that users can change its value if necessary.
@@ -85,6 +86,8 @@ EventMachine_t::EventMachine_t (EMCallback event_callback):
 	Quantum.tv_sec = 0;
 	Quantum.tv_usec = 90000;
 
+	_ResetStatistics();
+
 	// Make sure the current loop time is sane, in case we do any initializations of
 	// objects before we start running.
 	_UpdateTime();
@@ -132,6 +135,28 @@ EventMachine_t::~EventMachine_t()
 		close (kqfd);
 }
 
+
+void EventMachine_t::_ResetStatistics()
+{
+  Stats.PollsTotalCount = Stats.PollsTimedOut = 0;
+  Stats.TimersFired = 0;
+  Stats.TimersDelayAcc = 0;
+  Stats.TimersMaxDelay = 0;
+  Stats.TimersMinDelay = DBL_MAX;
+
+  gettimeofday (&Stats.last_reset, NULL);
+}
+
+void EventMachine_t::StatsMeasureTimerLatency(double timer_time)
+{
+	double delay = GetRealTime() - timer_time;
+	Stats.TimersFired++;
+	Stats.TimersDelayAcc += delay;
+	if(Stats.TimersMaxDelay < delay)
+		Stats.TimersMaxDelay = delay;
+	if(Stats.TimersMinDelay > delay)
+		Stats.TimersMinDelay = delay;
+}
 
 /*************************
 EventMachine_t::_UseEpoll
@@ -388,6 +413,8 @@ void EventMachine_t::_DispatchHeartbeats()
 			break;
 		if (i->first > MyCurrentLoopTime)
 			break;
+		if(Stats.enabled)
+			StatsMeasureTimerLatency(i->first);
 		EventableDescriptor *ed = i->second;
 		ed->Heartbeat();
 		QueueHeartbeat(ed);
@@ -495,6 +522,7 @@ EventMachine_t::_RunOnce
 
 void EventMachine_t::_RunOnce()
 {
+	Stats.PollsTotalCount++;
 	if (bEpoll)
 		_RunEpollOnce();
 	else if (bKqueue)
@@ -573,6 +601,8 @@ void EventMachine_t::_RunEpollOnce()
 		timeval tv = {0, ((errno == EINTR) ? 5 : 50) * 1000};
 		EmSelect (0, NULL, NULL, NULL, &tv);
 	}
+	//s==0 => timeout, otherwise there was something to do
+	if(s == 0) Stats.PollsTimedOut++;
 	#else
 	throw std::runtime_error ("epoll is not implemented on this platform");
 	#endif
@@ -622,6 +652,9 @@ void EventMachine_t::_RunKqueueOnce()
 	#else
 	k = kevent (kqfd, NULL, 0, Karray, MaxEvents, &ts);
 	#endif
+	//k == 0 => timeout
+	if(k == 0)
+		Stats.PollsTimedOut++;
 
 	struct kevent *ke = Karray;
 	while (k > 0) {
@@ -899,6 +932,7 @@ void EventMachine_t::_RunSelectOnce()
 		//rb_thread_blocking_region(xxx,(void*)&SelectData,RUBY_UBF_IO,0);
 		//int s = EmSelect (SelectData.maxsocket+1, &(SelectData.fdreads), &(SelectData.fdwrites), NULL, &(SelectData.tv));
 		//int s = SelectData.nSockets;
+		if(s == 0) Stats.PollsTimedOut++;
 		if (s > 0) {
 			/* Changed 01Jun07. We used to handle the Loop-breaker right here.
 			 * Now we do it AFTER all the regular descriptors. There's an
@@ -1012,6 +1046,8 @@ void EventMachine_t::_RunTimers()
 			break;
 		if (i->first > MyCurrentLoopTime)
 			break;
+		if(Stats.enabled)
+			StatsMeasureTimerLatency(i->first);
 		if (EventCallback)
 			(*EventCallback) (0, EM_TIMER_FIRED, NULL, i->second.GetBinding());
 		Timers.erase (i);

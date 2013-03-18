@@ -21,6 +21,7 @@ See the file COPYING for complete licensing information.
 #include "eventmachine.h"
 #include <ruby.h>
 #include <time.h>
+#include "em.h"
 
 #ifndef RFLOAT_VALUE
 #define RFLOAT_VALUE(arg) RFLOAT(arg)->value
@@ -218,7 +219,7 @@ static void event_callback_wrapper_with_timing (const unsigned long signature, i
 	if(gettimeofday(&tv, 0) >= 0) bTimeOk = true;
 	event_callback_wrapper(signature, event, data_str, data_num);
 	if(bTimeOk && gettimeofday(&tv_end, 0) >= 0){
-		fprintf(stderr, "EM callback(%d@%d) handled in %gms\n", event, signature, (tv_end.tv_sec - tv.tv_sec)*1000 + (tv_end.tv_usec - tv.tv_usec)/1000.0);
+		fprintf(stderr, "EM callback(%d@%lu) handled in %gms\n", event, signature, (tv_end.tv_sec - tv.tv_sec)*1000 + (tv_end.tv_usec - tv.tv_usec)/1000.0);
 	} else {
 		fprintf(stderr, "EM callback cannot be timed\n");
 	}
@@ -234,6 +235,58 @@ static VALUE t_callback_timing_set (VALUE self, VALUE val)
 static VALUE t_callback_timing_get (VALUE self)
 {
 	return bCallbackTimingEnabled ? Qtrue : Qfalse;
+}
+
+static VALUE t_timer_stats_set (VALUE self, VALUE val)
+{
+	((EventMachine_t*)evma_get_machine_ptr())->Stats.enabled = RTEST(val);
+	return val;
+}
+
+static VALUE t_timer_stats_get (VALUE self)
+{
+	return ((EventMachine_t*)evma_get_machine_ptr())->Stats.enabled ? Qtrue : Qfalse;
+}
+
+static VALUE t_timer_stats_reset (VALUE self)
+{
+	((EventMachine_t*)evma_get_machine_ptr())->_ResetStatistics();
+	return Qnil; //?
+}
+
+static VALUE t_timer_stats_latency (VALUE self)
+{
+	EventMachine_t* machine = (EventMachine_t*)evma_get_machine_ptr();
+
+	if(!machine->Stats.TimersFired)
+		return Qnil;
+	//return in ms
+	return rb_float_new(machine->Stats.TimersDelayAcc / machine->Stats.TimersFired / 1000.0);
+}
+
+static VALUE t_timer_stats_latency_max (VALUE self)
+{
+	EventMachine_t* machine = (EventMachine_t*)evma_get_machine_ptr();
+
+	if(!machine->Stats.TimersFired)
+		return Qnil;
+	//return in ms
+	return rb_float_new(machine->Stats.TimersMaxDelay / 1000.0);
+}
+
+static VALUE t_timer_stats_details (VALUE self)
+{
+	EventMachine_t* machine = (EventMachine_t*)evma_get_machine_ptr();
+
+	if(!machine->Stats.TimersFired)
+		return Qnil;
+
+	VALUE hash = rb_hash_new();
+	rb_hash_aset(hash, ID2SYM(rb_intern("count")), UINT2NUM(machine->Stats.TimersFired));
+	rb_hash_aset(hash, ID2SYM(rb_intern("avg_delay")), rb_float_new(machine->Stats.TimersDelayAcc / machine->Stats.TimersFired / 1000.0));
+	rb_hash_aset(hash, ID2SYM(rb_intern("min_delay")), rb_float_new(machine->Stats.TimersMinDelay / 1000));
+	rb_hash_aset(hash, ID2SYM(rb_intern("max_delay")), rb_float_new(machine->Stats.TimersMaxDelay / 1000));
+	return hash;
 }
 
 /**************************
@@ -1320,6 +1373,13 @@ extern "C" void Init_rubyeventmachine()
 
 	rb_define_module_function (EmModule, "callback_timing", (VALUE(*)(...))t_callback_timing_get, 0);
 	rb_define_module_function (EmModule, "callback_timing=", (VALUE(*)(...))t_callback_timing_set, 1);
+
+	rb_define_module_function (EmModule, "timer_stats", (VALUE(*)(...))t_timer_stats_get, 0);
+	rb_define_module_function (EmModule, "timer_stats=", (VALUE(*)(...))t_timer_stats_set, 1);
+	rb_define_module_function (EmModule, "timer_stats_reset!", (VALUE(*)(...))t_timer_stats_reset, 0);
+	rb_define_module_function (EmModule, "timer_latency", (VALUE(*)(...))t_timer_stats_latency, 0);
+	rb_define_module_function (EmModule, "timer_latency_max", (VALUE(*)(...))t_timer_stats_latency_max, 0);
+	rb_define_module_function (EmModule, "timer_details", (VALUE(*)(...))t_timer_stats_details, 0);
 
 	rb_define_module_function (EmModule, "ssl?", (VALUE(*)(...))t__ssl_p, 0);
 
