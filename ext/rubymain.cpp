@@ -61,6 +61,7 @@ static VALUE Intern_connection_completed;
 static VALUE rb_cProcStatus;
 
 static int bCallbackTimingEnabled = 0;
+static int bTimerStatsEnabled = 0;
 
 struct em_event {
 	unsigned long signature;
@@ -239,13 +240,16 @@ static VALUE t_callback_timing_get (VALUE self)
 
 static VALUE t_timer_stats_set (VALUE self, VALUE val)
 {
-	((EventMachine_t*)evma_get_machine_ptr())->Stats.enabled = RTEST(val);
+	bTimerStatsEnabled = RTEST(val);
+	EventMachine_t* em = (EventMachine_t*)evma_peek_machine_ptr();
+	if(em)
+		em->Stats.enabled = bTimerStatsEnabled;
 	return val;
 }
 
 static VALUE t_timer_stats_get (VALUE self)
 {
-	return ((EventMachine_t*)evma_get_machine_ptr())->Stats.enabled ? Qtrue : Qfalse;
+	return bTimerStatsEnabled ? Qtrue : Qfalse;
 }
 
 static VALUE t_timer_stats_reset (VALUE self)
@@ -303,6 +307,9 @@ static VALUE t_initialize_event_machine (VALUE self)
 		evma_initialize_library ((EMCallback)event_callback_wrapper_with_timing);
 	} else {
 		evma_initialize_library ((EMCallback)event_callback_wrapper);
+	}
+	if(bTimerStatsEnabled){
+		((EventMachine_t*)evma_get_machine_ptr())->Stats.enabled = bTimerStatsEnabled;
 	}
 	return Qnil;
 }

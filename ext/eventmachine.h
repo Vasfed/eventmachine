@@ -119,6 +119,7 @@ extern "C" {
 
 	uint64_t evma_get_current_loop_time();
 	void* evma_get_machine_ptr();
+	void* evma_peek_machine_ptr();
 #if __cplusplus
 }
 #endif

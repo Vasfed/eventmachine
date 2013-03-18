@@ -71,6 +71,11 @@ extern "C" void* evma_get_machine_ptr()
 	return EventMachine;
 }
 
+extern "C" void* evma_peek_machine_ptr()
+{
+	return EventMachine;
+}
+
 /********************
 evma_release_library
 ********************/
